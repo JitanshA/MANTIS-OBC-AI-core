@@ -12,9 +12,6 @@
 ### Formatting
 - Based on Google style guide. Refernece https://github.com/NASA-SW-VnV/ikos .clang-format and .clang-tidy for details
 
-### Classes and Inheritence 
-- Do not use inheritence 
-
 ### Looping
 - Ensure all loops have a termination condition i.e. no infinite while true loops
 
