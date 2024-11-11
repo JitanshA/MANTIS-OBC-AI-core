@@ -1,3 +1,7 @@
+# Dependencies 
+- socat (brew install socat)
+- protobuf (brew install protobuf)
+
 # Coding Guidelines
 ### Naming Conventions
 - File names in snake case e.g. my_file.cpp or my_file.h
