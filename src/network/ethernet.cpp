@@ -66,3 +66,24 @@ bool EthernetPort::receiveImage(const std::string &outputFile)
     logMessage("Image received and saved to " + outputFile);
     return true;
 }
+
+bool EthernetPort::receiveMessage(std::string &message)
+{
+    char buffer[BUFFER_SIZE];
+    struct sockaddr_in senderAddr;
+    socklen_t senderLen = sizeof(senderAddr);
+
+    ssize_t bytesReceived = recvfrom(udpSocket_, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *)&senderAddr, &senderLen);
+    if (bytesReceived < 0)
+    {
+        logMessage("Error: Receiving text message failed.");
+        perror("Receiving text message failed");
+        return false;
+    }
+
+    // Null-terminate and store in message string
+    buffer[bytesReceived] = '\0';
+    message = buffer;
+    logMessage("Text message received: " + message);
+    return true;
+}

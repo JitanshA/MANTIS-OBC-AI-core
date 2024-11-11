@@ -11,6 +11,8 @@ public:
     EthernetPort(int port = UDP_PORT);
     ~EthernetPort();
     bool receiveImage(const std::string &outputFile);
+    bool receiveMessage(std::string &message);
+    int getSocket() const { return udpSocket_; }
 
 private:
     int udpSocket_;

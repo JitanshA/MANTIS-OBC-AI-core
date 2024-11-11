@@ -36,7 +36,7 @@ int main()
 
     command::Command cmd;
 
-    while (true)
+    while (true) // Update this to have termination
     {
         if (uart.readCommand(cmd))
         {
@@ -72,5 +72,21 @@ void processCommand()
             << " dst: " << cmd.dst();
 
         logMessage(oss.str());
+
+        if (cmd.cmd() == START_ETHERNET_CMD)
+        {
+            logMessage("Received trigger command. Starting Ethernet listener...");
+
+            EthernetPort ethernetPort(UDP_PORT);
+            std::string receivedMessage;
+            if (ethernetPort.receiveMessage(receivedMessage))
+            {
+                logMessage("Received text message: " + receivedMessage);
+            }
+            else
+            {
+                logMessage("Error: Failed to receive text message on Ethernet port.");
+            }
+        }
     }
 }
