@@ -17,6 +17,9 @@ protobuf_generate(
     IMPORT_DIRS "${CMAKE_CURRENT_LIST_DIR}/src/proto"
     PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
 )
+set(CORE_SOURCES
+    src/core/command_handling.cpp
+)
 
 set(NETWORK_SOURCES
     src/network/ethernet.cpp
@@ -26,8 +29,7 @@ set(UTILS_SOURCES
     src/utils/utils.cpp
 )
 
-# -------------------------OBC_AI--------------------------------------
-add_executable(obc_ai src/obc_ai.cpp ${NETWORK_SOURCES} ${UTILS_SOURCES})
+add_executable(obc_ai src/obc_ai.cpp ${NETWORK_SOURCES} ${UTILS_SOURCES} ${CORE_SOURCES})
 target_link_libraries(obc_ai 
     PRIVATE 
     proto-objects 
@@ -38,9 +40,9 @@ target_include_directories(obc_ai
     ${PROTO_BINARY_DIR}
     src/network
     src/utils
+    src/core
 )
 
-# -------------------------OBC_MICRO-----------------------------------
 add_executable(obc_micro src/obc_micro.cpp ${NETWORK_SOURCES} ${UTILS_SOURCES})
 target_link_libraries(obc_micro 
     PRIVATE 
@@ -54,7 +56,6 @@ target_include_directories(obc_micro
     src/utils
 )
 
-# -------------------------PAYLOAD-------------------------------------
 add_executable(payload src/payload.cpp ${NETWORK_SOURCES} ${UTILS_SOURCES})
 target_link_libraries(payload 
     PRIVATE 
