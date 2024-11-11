@@ -94,7 +94,7 @@ int main()
     Sender sender("/tmp/tty.sender");
 
     command::Command cmd;
-    cmd.set_cmd(100);
+    cmd.set_cmd(3);
     cmd.set_src(command::IPC);
     cmd.set_dst(command::OBA);
     cmd.set_dtt(100);

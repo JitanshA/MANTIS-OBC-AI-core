@@ -6,6 +6,7 @@
 // UART Configuration
 constexpr int BAUD_RATE = 9600;
 constexpr int BUFFER_SIZE = 1024;
+constexpr char OBC_AI_DEV[] = "/tmp/tty.receiver";
 
 // Network Configuration
 constexpr int UDP_PORT = 5001;

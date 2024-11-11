@@ -2,6 +2,7 @@
     "files.associations": {
         "cerrno": "cpp",
         "condition_variable": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "optional": "cpp"
     }
 }

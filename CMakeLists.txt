@@ -19,6 +19,7 @@ protobuf_generate(
 )
 set(CORE_SOURCES
     src/core/command_handling.cpp
+    src/core/uart_init.cpp
 )
 
 set(NETWORK_SOURCES

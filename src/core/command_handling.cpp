@@ -3,12 +3,27 @@
 #include "ethernet.h"
 #include "utils.h"
 #include "constants.h"
+#include <future>
 #include <sstream>
 #include <string>
 
 std::queue<command::Command> commandQueue;
 std::mutex queueMutex;
 std::condition_variable queueCondVar;
+
+std::string setGpioHigh()
+{
+    logMessage("Setting GPIO pin to HIGH...");
+    logMessage("GPIO pin set to HIGH successfully.");
+    return "GPIO set to HIGH";
+}
+
+std::string setGpioLow()
+{
+    logMessage("Setting GPIO pin to LOW...");
+    logMessage("GPIO pin set to LOW successfully.");
+    return "GPIO set to LOW";
+}
 
 void processCommand()
 {
@@ -23,25 +38,57 @@ void processCommand()
         lock.unlock();
 
         std::ostringstream oss;
-        oss << "Processing Command: cmd: " << cmd.cmd()
-            << " src: " << cmd.src()
-            << " dst: " << cmd.dst();
+        oss << "Processing Command:\n"
+            << " - cmd: " << cmd.cmd() << "\n"
+            << " - src: " << cmd.src() << "\n"
+            << " - dst: " << cmd.dst() << "\n"
+            << " - dtt: " << cmd.dtt() << "\n"
+            << " - sig: " << cmd.sig() << "\n";
+
+        if (cmd.has_string_d())
+            oss << " - data (string): " << cmd.string_d() << "\n";
+        else if (cmd.has_bytes_d())
+            oss << " - data (bytes): " << std::string(cmd.bytes_d().begin(), cmd.bytes_d().end()) << "\n";
+        else if (cmd.has_int_d())
+            oss << " - data (int): " << cmd.int_d() << "\n";
+        else if (cmd.has_double_d())
+            oss << " - data (double): " << cmd.double_d() << "\n";
+        else
+            oss << " - data: None\n";
+
         logMessage(oss.str());
 
-        if (cmd.cmd() == START_ETHERNET_CMD)
+        switch (cmd.cmd())
         {
-            logMessage("Received trigger command. Starting Ethernet listener...");
+        case 1:
+            logMessage("Handling command 1.");
+            break;
 
-            EthernetPort ethernetPort(UDP_PORT);
-            std::string receivedMessage;
-            if (ethernetPort.receiveMessage(receivedMessage))
+        case 3:
+            logMessage("Handling command 3: Set GPIO pin to HIGH.");
             {
-                logMessage("Received text message: " + receivedMessage);
+                std::future<std::string> gpioHighFuture = std::async(std::launch::async, setGpioHigh);
+
+                logMessage("Waiting for GPIO HIGH task to complete...");
+                std::string result = gpioHighFuture.get();
+                logMessage("GPIO HIGH Task Result: " + result);
             }
-            else
+            break;
+
+        case 4:
+            logMessage("Handling command 4: Set GPIO pin to LOW.");
             {
-                logMessage("Error: Failed to receive text message on Ethernet port.");
+                std::future<std::string> gpioLowFuture = std::async(std::launch::async, setGpioLow);
+
+                logMessage("Waiting for GPIO LOW task to complete...");
+                std::string result = gpioLowFuture.get();
+                logMessage("GPIO LOW Task Result: " + result);
             }
+            break;
+
+        default:
+            logMessage("Unknown command received.");
+            break;
         }
     }
 }

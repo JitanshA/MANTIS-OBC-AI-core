@@ -1,12 +1,4 @@
 #include "protocol.pb.h"
-#include <cerrno>
-#include <cstring>
-#include <fcntl.h>
-#include <iostream>
-#include <string>
-#include <termios.h>
-#include <unistd.h>
-#include <vector>
 #include <thread>
 #include <queue>
 #include <mutex>
@@ -16,16 +8,13 @@
 #include "utils.h"
 #include "constants.h"
 #include "command_handling.h"
+#include "uart_init.h"
 
 int main()
 {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
-    UARTPort uart("/tmp/tty.receiver");
 
-    if (!uart.configurePort())
-    {
-        return 1;
-    }
+    UARTPort uart = uartInit();
 
     std::thread workerThread(processCommand);
 
