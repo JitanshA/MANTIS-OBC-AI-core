@@ -7,9 +7,9 @@
 #include <sstream>
 #include <string>
 
-std::queue<command::Command> commandQueue;
-std::mutex queueMutex;
-std::condition_variable queueCondVar;
+std::queue<command::Command> commandQueue; // Shared queue to store commands and fetch commands from
+std::mutex queueMutex;                     // Mutex for managing queue access
+std::condition_variable queueCondVar;      // Notifies when commands are added
 
 std::string setGpioHigh()
 {
@@ -29,15 +29,20 @@ void processCommand()
 {
     while (true)
     {
-        std::unique_lock<std::mutex> lock(queueMutex);
+        std::unique_lock<std::mutex> lock(queueMutex); // Lock queueMutex
+
+        // Wait until there is at least one command in the queue
+        // The lambda function [] { return !commandQueue.empty(); }
+        // returns true when queue is not empty, at which point
+        // the thread proceeds
         queueCondVar.wait(lock, []
                           { return !commandQueue.empty(); });
 
-        command::Command cmd = commandQueue.front();
-        commandQueue.pop();
-        lock.unlock();
+        command::Command cmd = commandQueue.front(); // Fetch the next command from the queue
+        commandQueue.pop();                          // Remove the processed command from the queue
+        lock.unlock();                               // Unlock the mutex to allow other threads access to queue
 
-        std::ostringstream oss;
+        std::ostringstream oss; // Build a log message
         oss << "Processing Command:\n"
             << " - cmd: " << cmd.cmd() << "\n"
             << " - src: " << cmd.src() << "\n"

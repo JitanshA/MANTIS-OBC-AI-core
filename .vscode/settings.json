@@ -3,6 +3,7 @@
         "cerrno": "cpp",
         "condition_variable": "cpp",
         "vector": "cpp",
-        "optional": "cpp"
+        "optional": "cpp",
+        "mutex": "cpp"
     }
 }
