@@ -9,124 +9,186 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <termios.h>
+
 
 #include "protocol.pb.h"
-#include "uart.hpp"
 
 #define SERVER_PORT "/tmp/tty.server"
 #define BUFFER_SIZE 256
 
-std::atomic<bool> emergencyStop(false);
-std::atomic<bool> taskRunning(false);
-std::thread actionThread;
-std::mutex taskMutex;
-std::condition_variable taskCondition;
-
-void listenUART(int fd);
-void parseAndExecuteCommand(const std::string& receivedData);
-void performLongRunningTask();
-void stopTask();
-
-int main() {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-    std::string serverPort = "/tmp/tty.server";
-    int fd = openPort(serverPort);
-    if (fd < 0) {
-        std::cerr << "Failed to open port.\n";
-        return EXIT_FAILURE;
+class UART{
+public:
+    explicit UART(const std::string& port){
+        fd_ = openPort(port);
+    }
+    ~UART(){
+        if(fd_ >= 0) close(fd_);
+    }
+    
+    ssize_t readData(char* buffer, ssize_t bufferSize){
+        ssize_t bytesRead = read(fd_, buffer, bufferSize);
+        return bytesRead;
     }
 
-    listenUART(fd);
-
-    close(fd);
-    if (actionThread.joinable()) {
-        actionThread.join();
+    ssize_t writeData(const char* data, size_t size) {
+        ssize_t bytesWritten = write(fd_, data, size);
+        return bytesWritten;
     }
-    google::protobuf::ShutdownProtobufLibrary();
-    return EXIT_SUCCESS;
-}
+private:
+    int fd_;
 
-void listenUART(int fd) {
-    char buffer[BUFFER_SIZE];
+    int openPort(const std::string& port) {
+        int fd = open(port.c_str(), O_RDWR | O_NOCTTY);
+        configurePort(B9600); 
+        return fd;
+    }
 
-    while (!emergencyStop) {
-        ssize_t bytesRead = read(fd, buffer, sizeof(buffer));
-        if (bytesRead > 0) {
-            std::string receivedData(buffer, bytesRead);
-            parseAndExecuteCommand(receivedData);
-        } else if (bytesRead < 0) {
-            perror("Error reading from serial port");
+    void configurePort(int baudRate) {
+        struct termios tty;
+
+        // Control modes
+        tty.c_cflag |=
+            (CLOCAL | CREAD);     // Enable receiver, ignore modem control lines
+        tty.c_cflag &= ~CSIZE;    // Clear character size bits
+        tty.c_cflag |= CS8;       // Set character size to 8 bits
+        tty.c_cflag &= ~PARENB;   // Disable parity bit
+        tty.c_cflag &= ~CSTOPB;   // Use one stop bit
+        tty.c_cflag &= ~CRTSCTS;  // Disable hardware flow control
+
+        // Input modes
+        tty.c_iflag &=
+            ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+
+        // Output modes
+        tty.c_oflag &= ~OPOST;
+
+        // Local modes
+        tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+
+        tty.c_cc[VMIN] = 1;   // Minimum number of characters for non-canonical read
+        tty.c_cc[VTIME] = 1;  // Timeout in deciseconds for non-canonical read
+
+        cfsetispeed(&tty, baudRate);
+        cfsetospeed(&tty, baudRate);
+
+    }
+};
+
+class TaskManager {
+public:
+    TaskManager() : taskRunning(false), emergencyStop(false) {}
+
+    void start() {
+        std::lock_guard<std::mutex> lock(taskMutex);
+        if (taskRunning) {
+            std::cout << "Task already running.\n";
+            return;
+        }
+
+        taskRunning = true;
+        emergencyStop = false;
+        actionThread = std::thread(&TaskManager::runTask, this);
+    }
+
+    void stop() {
+        {
+            std::lock_guard<std::mutex> lock(taskMutex);
+            if (!taskRunning) {
+                std::cout << "No task running to stop.\n";
+                return;
+            }
+            emergencyStop = true;
+        }
+        taskCondition.notify_all();
+        if (actionThread.joinable()) {
+            actionThread.join();
         }
     }
-}
 
-void parseAndExecuteCommand(const std::string& receivedData) {
-    command::Command msg;
+    ~TaskManager() {
+        stop(); 
+    }
 
-    if (msg.ParseFromString(receivedData)) {
-        std::cout << "\nReceived message:\n";
-        std::cout << "Command: " << msg.cmd() << "\n";
+private:
+    void runTask() {
+        std::unique_lock<std::mutex> lock(taskMutex);
+        while (taskRunning && !emergencyStop) {
+            taskCondition.wait_for(lock, std::chrono::seconds(1), [this] { return this->emergencyStop.load(); });
+            if (!emergencyStop) {
+                std::cout << "Task running...\n";
+            }
+        }
+        taskRunning = false;
+    }
+
+    std::atomic<bool> taskRunning;
+    std::atomic<bool> emergencyStop;
+    std::thread actionThread;
+    std::mutex taskMutex;
+    std::condition_variable taskCondition;
+};
+
+
+class CommandHandler {
+public:
+    explicit CommandHandler(TaskManager& taskManagerRef) : taskManager(taskManagerRef) {}
+
+    void parseAndExecute(const std::string& receivedData) {
+        command::Command msg;
+        if (!msg.ParseFromString(receivedData)) {
+            throw std::runtime_error("Failed to parse Protobuf message.");
+        }
 
         switch (msg.cmd()) {
             case 99:
-                std::cout << "Emergency stop command received!\n";
-                stopTask();
+                taskManager.stop();
                 break;
-
-            case 1: {
-                std::lock_guard<std::mutex> lock(taskMutex);
-                if (!taskRunning) {
-                    std::cout << "Starting long-running task.\n";
-                    taskRunning = true;
-                    emergencyStop = false;
-                    actionThread = std::thread(performLongRunningTask);
-                } else {
-                    std::cout << "Task already running.\n";
-                }
-            } break;
-        }
-    } else {
-        std::cerr << "Failed to parse protobuf message.\n";
-    }
-}
-
-void performLongRunningTask() {
-    std::unique_lock<std::mutex> lock(taskMutex);
-
-    while (taskRunning && !emergencyStop) {
-        // Release lock and wait for either stop signal or timeout
-        auto status =
-            taskCondition.wait_for(lock, std::chrono::seconds(1),
-                                   [&] { return emergencyStop.load(); });
-        
-        if (!emergencyStop) {
-            std::cout << "Task running...\n";
+            case 1:
+                taskManager.start();
+                break;
+            default:
+                std::cout << "Unknown command: " << msg.cmd() << "\n";
         }
     }
 
-    if (emergencyStop) {
-        std::cout << "Task interrupted by emergency stop.\n";
-    } else {
-        std::cout << "Task completed successfully.\n";
-    }
+private:
+    TaskManager& taskManager; 
+};
 
-    taskRunning = false;
-    emergencyStop = false;
-}
+class UARTApp {
+public:
+    UARTApp(const std::string& port) : uart(port), taskManager(), commandHandler(taskManager) {}
 
-void stopTask() {
-    std::cout << "Stopping the running task...\n";
-    {
-        std::lock_guard<std::mutex> lock(taskMutex);
-        if (!taskRunning) {
-            std::cout << "No task is currently running.\n";
-            return;
+    void run() {
+        char buffer[BUFFER_SIZE];
+        while (!emergencyStop) {
+            try {
+                ssize_t bytesRead = uart.readData(buffer, sizeof(buffer));
+                std::string data(buffer, bytesRead);
+                commandHandler.parseAndExecute(data);
+            } catch (const std::exception& e) {
+                std::cerr << "Error: " << e.what() << "\n";
+            }
         }
-        emergencyStop = true;
     }
-    taskCondition.notify_all();
 
-    if (actionThread.joinable()) {
-        actionThread.join();
+private:
+    UART uart;
+    CommandHandler commandHandler;
+    TaskManager taskManager;
+    std::atomic<bool> emergencyStop{false};
+};
+
+int main() {
+    try {
+        UARTApp app(SERVER_PORT);
+        app.run();
+    } catch (const std::exception& e) {
+        std::cerr << "Application failed: " << e.what() << "\n";
+        return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
 }
+
+
