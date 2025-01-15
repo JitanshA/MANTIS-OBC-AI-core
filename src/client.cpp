@@ -44,11 +44,11 @@ int main() {
         std::cout << "Enter cmd id: " << std::endl;
         std::cin >> cmdId;
         command::Command msg;
-        msg.set_cmd(cmdId);                 // Example command value
-        msg.set_src(command::Device::IPC);  // Source device
-        msg.set_dst(command::Device::PAY);  // Destination device
-        msg.set_dtt(12345);                 // Example timestamp
-        msg.set_sig(67890);                 // Example signal value
+        msg.set_cmd(cmdId);                 
+        msg.set_src(command::Device::IPC);  
+        msg.set_dst(command::Device::PAY);  
+        msg.set_dtt(12345);                 
+        msg.set_sig(67890);                 
 
         msg.set_string_d("Hello, Server!");
 
