@@ -4,13 +4,7 @@ option optimize_for = CODE_SIZE;
 package command;
 
 enum Device {
-  IPC = 000;
-  ADC = 100;
-  CMM = 200;
-  EPS = 300;
-  OBM = 400;
-  OBA = 500;
-  PAY = 600;
+  IPC = 000; ADC = 100; CMM = 200; EPS = 300; OBM = 400; OBA = 500; PAY = 600;
   SFT = 700;
   THM = 800;
 }
