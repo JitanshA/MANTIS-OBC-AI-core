@@ -46,7 +46,7 @@ private:
 
     int openPort(const std::string &port)
     {
-        int fd = open(port.c_str(), O_RDWR | O_NOCTTY);
+        int fd = open(port.c_str(), O_RDWR | O_NOCTTY); // is this blocking?
         configurePort(B9600);
         return fd;
     }
@@ -75,7 +75,7 @@ private:
         tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 
         tty.c_cc[VMIN] = 1;  // Minimum number of characters for non-canonical read
-        tty.c_cc[VTIME] = 1; // Timeout in deciseconds for non-canonical read
+        tty.c_cc[VTIME] = 1; // Timeout in deciseconds for non-canonical read DOUBLE CHECK THIS
 
         cfsetispeed(&tty, baudRate);
         cfsetospeed(&tty, baudRate);
@@ -177,10 +177,10 @@ private:
     TaskManager &taskManager;
 };
 
-class UARTApp
+class JetsonCore
 {
 public:
-    UARTApp(const std::string &port) : uart(port), taskManager(), commandHandler(taskManager) {}
+    JetsonCore(const std::string &port) : uart(port), taskManager(), commandHandler(taskManager) {}
 
     void run()
     {
@@ -209,7 +209,7 @@ private:
 
 int main()
 {
-    UARTApp app(SERVER_PORT);
+    JetsonCore app(SERVER_PORT);
     app.run();
 
     return EXIT_SUCCESS;
