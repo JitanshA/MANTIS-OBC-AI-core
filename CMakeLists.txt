@@ -30,18 +30,16 @@ include_directories(
 # Create the server executable
 add_executable(server 
     src/server.cpp
-    src/uart.cpp
     ${PROTO_SRCS}
     ${PROTO_HDRS}
 )
 
 # Create the client executable
-add_executable(client
-    src/client.cpp
-    src/uart.cpp
-    ${PROTO_SRCS}
-    ${PROTO_HDRS}
-)
+#add_executable(client
+#    src/client.cpp
+#    ${PROTO_SRCS}
+#    ${PROTO_HDRS}
+#)
 
 # Link libraries
 target_link_libraries(server PRIVATE 
@@ -51,15 +49,15 @@ target_link_libraries(server PRIVATE
     absl::log_internal_check_op
 )
 
-target_link_libraries(client PRIVATE 
-    ${Protobuf_LIBRARIES}
-    absl::log
-    absl::log_internal_message
-    absl::log_internal_check_op
-)
+#target_link_libraries(client PRIVATE 
+#    ${Protobuf_LIBRARIES}
+#    absl::log
+#    absl::log_internal_message
+#    absl::log_internal_check_op
+#)
 
 # Set output directories
-set_target_properties(server client
+set_target_properties(server
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

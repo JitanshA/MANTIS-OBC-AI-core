@@ -8,6 +8,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <sys/select.h>
 #include <thread>
 #include <termios.h>
 
@@ -15,7 +16,24 @@
 
 #define SERVER_PORT "/tmp/tty.server"
 #define BUFFER_SIZE 256
+#define MAX_RETRIES 5
+#define RETRY_DELAY_MS 2000 // 2 seconds
+#define READ_TIMEOUT_SEC 1  // 1 second timeout for select()
 
+/**
+ * @class UARTException
+ * @brief
+ */
+class UARTException : public std::runtime_error
+{
+public:
+    explicit UARTException(const std::string &msg) : std::runtime_error(msg) {}
+};
+
+/**
+ * @class UART
+ * @brief Encapsulates UART configuration, opening, reading, and writing.
+ */
 class UART
 {
 public:
@@ -23,22 +41,48 @@ public:
     {
         fd_ = openPort(port);
     }
+
     ~UART()
     {
-        if (fd_ >= 0)
-            close(fd_);
+        closePort();
     }
 
-    ssize_t readData(char *buffer, ssize_t bufferSize)
+    ssize_t readData(char *buffer, size_t bufferSize)
     {
         ssize_t bytesRead = read(fd_, buffer, bufferSize);
+        if (bytesRead < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return 0; // No data available
+            throw UARTException("UART read error: " + std::string(strerror(errno)));
+        }
         return bytesRead;
     }
 
     ssize_t writeData(const char *data, size_t size)
     {
         ssize_t bytesWritten = write(fd_, data, size);
+        if (bytesWritten < 0)
+        {
+            throw UARTException("UART write error: " + std::string(strerror(errno)));
+        }
         return bytesWritten;
+    }
+
+    int getFd() const noexcept
+    {
+        return fd_;
+    }
+
+    bool isOpen() const { return fd_ >= 0; }
+
+    void closePort()
+    {
+        if (fd_ >= 0)
+        {
+            close(fd_);
+            fd_ = -1;
+        }
     }
 
 private:
@@ -46,171 +90,139 @@ private:
 
     int openPort(const std::string &port)
     {
-        int fd = open(port.c_str(), O_RDWR | O_NOCTTY); // is this blocking?
-        configurePort(B9600);
+        int fd = open(port.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+        if (fd < 0)
+        {
+            throw UARTException("Failed to open UART port: " + port);
+        }
+        configurePort(fd, B9600);
         return fd;
     }
 
-    void configurePort(int baudRate)
+    void configurePort(int fd, int baudRate)
     {
         struct termios tty;
+        if (tcgetattr(fd, &tty) != 0)
+        {
+            throw UARTException("Failed to get UART attributes.");
+        }
 
-        // Control modes
-        tty.c_cflag |=
-            (CLOCAL | CREAD);    // Enable receiver, ignore modem control lines
-        tty.c_cflag &= ~CSIZE;   // Clear character size bits
-        tty.c_cflag |= CS8;      // Set character size to 8 bits
-        tty.c_cflag &= ~PARENB;  // Disable parity bit
-        tty.c_cflag &= ~CSTOPB;  // Use one stop bit
-        tty.c_cflag &= ~CRTSCTS; // Disable hardware flow control
+        tty.c_cflag |= (CLOCAL | CREAD);
+        tty.c_cflag &= ~CSIZE;
+        tty.c_cflag |= CS8;
+        tty.c_cflag &= ~PARENB;
+        tty.c_cflag &= ~CSTOPB;
+        tty.c_cflag &= ~CRTSCTS;
 
-        // Input modes
-        tty.c_iflag &=
-            ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-
-        // Output modes
+        tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
         tty.c_oflag &= ~OPOST;
-
-        // Local modes
         tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 
-        tty.c_cc[VMIN] = 1;  // Minimum number of characters for non-canonical read
-        tty.c_cc[VTIME] = 1; // Timeout in deciseconds for non-canonical read DOUBLE CHECK THIS
+        tty.c_cc[VMIN] = 1;
+        tty.c_cc[VTIME] = 1;
 
         cfsetispeed(&tty, baudRate);
         cfsetospeed(&tty, baudRate);
+
+        if (tcsetattr(fd, TCSANOW, &tty) != 0)
+        {
+            throw UARTException("Failed to set UART attributes.");
+        }
     }
 };
 
-class TaskManager
+void uartReadLoop(UART &uart, std::atomic<bool> &running)
 {
-public:
-    TaskManager() : taskRunning(false), emergencyStop(false) {}
+    char buffer[BUFFER_SIZE];
 
-    void start()
+    while (running)
     {
-        std::lock_guard<std::mutex> lock(taskMutex);
-        if (taskRunning)
+        try
         {
-            std::cout << "Task already running.\n";
-            return;
-        }
+            fd_set read_fds;
+            struct timeval timeout;
 
-        taskRunning = true;
-        emergencyStop = false;
-        actionThread = std::thread(&TaskManager::runTask, this);
-    }
+            FD_ZERO(&read_fds);
+            FD_SET(uart.getFd(), &read_fds); // Monitor UART file descriptor
 
-    void stop()
-    {
-        {
-            std::lock_guard<std::mutex> lock(taskMutex);
-            if (!taskRunning)
+            timeout.tv_sec = READ_TIMEOUT_SEC;
+            timeout.tv_usec = 0;
+
+            int activity = select(uart.getFd() + 1, &read_fds, nullptr, nullptr, &timeout);
+
+            if (activity < 0)
             {
-                std::cout << "No task running to stop.\n";
-                return;
+                if (errno == EINTR)
+                    continue; // Interrupted by a signal, restart loop
+                throw UARTException("select() failed: " + std::string(strerror(errno)));
             }
-            emergencyStop = true;
-        }
-        taskCondition.notify_all();
-        if (actionThread.joinable())
-        {
-            actionThread.join();
-        }
-    }
-
-    ~TaskManager()
-    {
-        stop();
-    }
-
-private:
-    void runTask()
-    {
-        std::unique_lock<std::mutex> lock(taskMutex);
-        while (taskRunning && !emergencyStop)
-        {
-            taskCondition.wait_for(lock, std::chrono::seconds(1), [this]
-                                   { return this->emergencyStop.load(); });
-            if (!emergencyStop)
+            else if (activity == 0)
             {
-                std::cout << "Task running...\n";
+                // Timeout reached, continue loop (non-blocking)
+                continue;
             }
-        }
-        taskRunning = false;
-    }
 
-    std::atomic<bool> taskRunning;
-    std::atomic<bool> emergencyStop;
-    std::thread actionThread;
-    std::mutex taskMutex;
-    std::condition_variable taskCondition;
-};
-
-class CommandHandler
-{
-public:
-    explicit CommandHandler(TaskManager &taskManagerRef) : taskManager(taskManagerRef) {}
-
-    void parseAndExecute(const std::string &receivedData)
-    {
-        command::Command msg;
-        if (!msg.ParseFromString(receivedData))
-        {
-            throw std::runtime_error("Failed to parse Protobuf message.");
-        }
-
-        switch (msg.cmd())
-        {
-        case 99:
-            taskManager.stop();
-            break;
-        case 1:
-            taskManager.start();
-            break;
-        default:
-            std::cout << "Unknown command: " << msg.cmd() << "\n";
-        }
-    }
-
-private:
-    TaskManager &taskManager;
-};
-
-class JetsonCore
-{
-public:
-    JetsonCore(const std::string &port) : uart(port), taskManager(), commandHandler(taskManager) {}
-
-    void run()
-    {
-        char buffer[BUFFER_SIZE];
-        while (!emergencyStop)
-        {
-            try
+            if (FD_ISSET(uart.getFd(), &read_fds))
             {
                 ssize_t bytesRead = uart.readData(buffer, sizeof(buffer));
-                std::string data(buffer, bytesRead);
-                commandHandler.parseAndExecute(data);
+                if (bytesRead > 0)
+                {
+                    std::string data(buffer, bytesRead);
+                    std::cout << "[UART] Received: " << data << std::endl;
+                }
             }
-            catch (const std::exception &e)
-            {
-                std::cerr << "Error: " << e.what() << "\n";
-            }
+        }
+        catch (const UARTException &e)
+        {
+            std::cerr << "[ERROR] UART read error: " << e.what() << std::endl;
+            running = false; // Stop loop on critical error
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "[FATAL] Unexpected error: " << e.what() << std::endl;
+            running = false;
         }
     }
 
-private:
-    UART uart;
-    CommandHandler commandHandler;
-    TaskManager taskManager;
-    std::atomic<bool> emergencyStop{false};
-};
+    std::cout << "[UART] Read loop exiting..." << std::endl;
+}
 
 int main()
 {
-    JetsonCore app(SERVER_PORT);
-    app.run();
+
+    std::unique_ptr<UART> uart; // Declare a smart pointer that is big enough for UART class
+    int attempts = 0;
+    std::atomic<bool> running(true);
+
+    while (attempts < MAX_RETRIES)
+    {
+        try
+        {
+            uart = std::make_unique<UART>(SERVER_PORT); // Allocate memory to object "uart" and call constructor, replace previous instance
+            std::cout << "[SUCCESS] UART initialized on port " << SERVER_PORT << "\n";
+            break; // Exit loop on success
+        }
+        catch (const UARTException &e)
+        {
+            std::cerr << "[ERROR] UART initialization failed: " << e.what() << "\n";
+            attempts++;
+            if (attempts >= MAX_RETRIES)
+            {
+                std::cerr << "[FATAL] Unable to initialize UART after " << MAX_RETRIES << " attempts.\n";
+                return EXIT_FAILURE;
+            }
+
+            std::cerr << "[RETRY] Retrying in " << (RETRY_DELAY_MS / 1000) << " seconds...\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY_MS)); // Delay before retrying
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "[FATAL] Unexpected error during UART initialization: " << e.what() << "\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    uartReadLoop(*uart, running);
 
     return EXIT_SUCCESS;
 }
