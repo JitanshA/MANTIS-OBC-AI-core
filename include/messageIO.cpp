@@ -2,15 +2,15 @@
 #include "uart.h"
 #include "protocol.pb.h"
 
-#include <arpa/inet.h> // ntohl()
+#include <arpa/inet.h>
 #include <iostream>
 #include <string>
-#include <cstring> // strerror
+#include <cstring>
 #include <cerrno>
 
 std::optional<std::string> readLengthPrefixedMessage(UART &uart, int maxMessageSize)
 {
-    // 1. Read the 4-byte length prefix
+    // Read 4-byte length prefix
     uint32_t netLen = 0;
     char *netLenPtr = reinterpret_cast<char *>(&netLen);
     int toRead = 4;
@@ -36,7 +36,7 @@ std::optional<std::string> readLengthPrefixedMessage(UART &uart, int maxMessageS
         readSoFar += static_cast<int>(n);
     }
 
-    // 2. Convert length from network to host byte order
+    // Convert length from network to host byte order
     uint32_t msgLen = ntohl(netLen);
     if (static_cast<int>(msgLen) > maxMessageSize)
     {
@@ -44,7 +44,7 @@ std::optional<std::string> readLengthPrefixedMessage(UART &uart, int maxMessageS
         return std::nullopt;
     }
 
-    // 3. Read the actual message bytes
+    // Read the actual message bytes
     std::string msgData;
     msgData.resize(msgLen);
     char *bufPtr = &msgData[0];

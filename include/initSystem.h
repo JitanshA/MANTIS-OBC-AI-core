@@ -4,12 +4,11 @@
 #include <memory>
 #include <thread>
 
-// Forward declare these classes to avoid needless includes:
+// Forward declare uart
 class UART;
 
-// If needed, include the constants:
 static const int MAX_RETRIES = 5;
-static const int RETRY_DELAY_MS = 2000; // 2 seconds
+static const int RETRY_DELAY_MS = 2000;
 
 bool initSystem(std::unique_ptr<UART> &uart);
 

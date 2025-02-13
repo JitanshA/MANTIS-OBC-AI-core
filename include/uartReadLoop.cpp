@@ -30,7 +30,6 @@ void uartReadLoop(UART &uart, std::atomic<bool> &running)
             }
             else if (activity == 0)
             {
-                // If you used a timeout, you'd handle it here.
                 continue;
             }
 
@@ -40,11 +39,9 @@ void uartReadLoop(UART &uart, std::atomic<bool> &running)
                 auto msgOpt = readLengthPrefixedMessage(uart, 4096);
                 if (!msgOpt.has_value())
                 {
-                    // Something went wrong reading the message, skip or break
                     continue;
                 }
 
-                // Parse and print
                 parseAndPrintCommand(msgOpt.value());
             }
         }
