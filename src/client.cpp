@@ -1,61 +1,40 @@
-#include <fcntl.h>
-#include <unistd.h>
-
-#include <cstring>
-#include <iostream>
-
 #include "protocol.pb.h"
-#include "uart.hpp"
+#include "uart.h"
+#include <arpa/inet.h> // htonl()
+#include <cstdlib>     // EXIT_FAILURE
+#include <string>
 
 #define CLIENT_PORT "/tmp/tty.client"
 
-void sendMessage(int fd, const command::Command& msg) {
-    std::string serializedData;
-    if (!msg.SerializeToString(&serializedData)) {
-        std::cerr << "Error: Failed to serialize the message.\n";
-        return;
-    }
+int main()
+{
 
-    ssize_t bytesWritten =
-        write(fd, serializedData.data(), serializedData.size());
-    if (bytesWritten < 0) {
-        std::cerr << "Error: Unable to send data over the serial port.\n";
-    } else {
-        std::cout << "Sent " << bytesWritten << " bytes successfully.\n";
-    }
-}
-
-int main() {
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-    int fd = open(CLIENT_PORT, O_WRONLY | O_NOCTTY);
-    if (fd == -1) {
-        std::cerr << "Error: Unable to open client port " << CLIENT_PORT
-                  << "\n";
+    // Open client
+    UART clientUart(CLIENT_PORT);
+    if (!clientUart.isOpen())
         return EXIT_FAILURE;
-    }
 
-    configureUart(fd, B9600);
+    command::Command cmdMsg;
+    cmdMsg.set_cmd(123);
+    cmdMsg.set_src(command::IPC);
+    cmdMsg.set_dst(command::ADC);
+    cmdMsg.set_dtt(9999);
+    cmdMsg.set_sig(42);
+    cmdMsg.set_int_d(123456789);
 
-    std::cout << "Client is ready to send data on " << CLIENT_PORT << "...\n";
-    int cmdId = 0;
+    // Serialize
+    std::string outBuf;
+    if (!cmdMsg.SerializeToString(&outBuf))
+        return EXIT_FAILURE;
 
-    while (true) {
-        std::cout << "Enter cmd id: " << std::endl;
-        std::cin >> cmdId;
-        command::Command msg;
-        msg.set_cmd(cmdId);                 
-        msg.set_src(command::Device::IPC);  
-        msg.set_dst(command::Device::PAY);  
-        msg.set_dtt(12345);                 
-        msg.set_sig(67890);                 
+    // Write the length prefix (4 bytes) + message
+    uint32_t netLen = htonl(static_cast<uint32_t>(outBuf.size()));
 
-        msg.set_string_d("Hello, Server!");
+    // Write the prefix
+    clientUart.writeData(reinterpret_cast<const char *>(&netLen), sizeof(netLen));
+    // Write the serialized data
+    clientUart.writeData(outBuf.data(), outBuf.size());
 
-        sendMessage(fd, msg);
-    }
-
-    close(fd);
-
-    return EXIT_SUCCESS;
+    // 5. Done.
+    return 0;
 }
