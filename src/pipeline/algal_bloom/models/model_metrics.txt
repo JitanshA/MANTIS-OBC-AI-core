@@ -1,0 +1,28 @@
+Training set size: 8158
+Test set size:     3497
+
+=== Test Metrics ===
+Accuracy:  0.5796
+F1 Score:  0.5504
+Precision: 0.5485
+Recall:    0.5796
+
+Confusion Matrix:
+[[1092  104   89   96    0]
+ [ 366  116  106   56    0]
+ [ 259   74  218   93    0]
+ [ 134   16   56  601    2]
+ [   4    3    9    3    0]]
+
+Classification Report:
+              precision    recall  f1-score   support
+
+           0       0.59      0.79      0.67      1381
+           1       0.37      0.18      0.24       644
+           2       0.46      0.34      0.39       644
+           3       0.71      0.74      0.72       809
+           4       0.00      0.00      0.00        19
+
+    accuracy                           0.58      3497
+   macro avg       0.42      0.41      0.41      3497
+weighted avg       0.55      0.58      0.55      3497

@@ -19,3 +19,7 @@ rules.ninja
 src/proto/generated/protocol.pb.*
 *.pb.cc
 *.pb.h
+
+obcaivenv/
+*.html
+*.pyc
