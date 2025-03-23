@@ -16,7 +16,6 @@ void uartReadLoop(UART &uart, std::atomic<bool> &running)
     {
         try
         {
-            // Use select() to wait for data
             fd_set read_fds;
             FD_ZERO(&read_fds);
             FD_SET(uart.getFd(), &read_fds);
@@ -33,7 +32,6 @@ void uartReadLoop(UART &uart, std::atomic<bool> &running)
                 continue;
             }
 
-            // If the UART FD is ready, try reading a length-prefixed message
             if (FD_ISSET(uart.getFd(), &read_fds))
             {
                 auto msgOpt = readLengthPrefixedMessage(uart, 4096);
