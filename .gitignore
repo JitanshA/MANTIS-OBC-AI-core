@@ -1,3 +1,7 @@
+.cache/
+.vscode/
+.DS_Store
+
 build/
 *.o
 *.obj
