@@ -14,10 +14,8 @@ features = [
 ]
 
 # Load model
-this_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(this_dir, "models", "lgbm_model.pkl")
-_model = joblib.load(model_path)
-
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "lgbm_model.pkl")
+_MODEL = joblib.load(MODEL_PATH)
 
 def compute_features_for_cell(
     image: np.ndarray,
@@ -28,7 +26,6 @@ def compute_features_for_cell(
     green = image[1][rows, cols].astype(np.float32)
     blue = image[2][rows, cols].astype(np.float32)
     nir = image[3][rows, cols].astype(np.float32)
-
     eps = 1e-6
 
     green_red_ratio = np.mean(green / (red + eps))
@@ -44,7 +41,7 @@ def compute_features_for_cell(
     ndvi = np.mean(ndvi_vals)
 
     water_mask = ndvi_vals < 0.1
-    percent_water = np.sum(water_mask) / len(ndvi_vals)
+    percent_water = np.sum(water_mask) / len(ndvi_vals) # TODO: Update this
 
     return {
         "B02_mean": float(np.mean(blue)),
@@ -62,7 +59,6 @@ def compute_features_for_cell(
         "percent_water": float(percent_water),
     }
 
-
 def predict_hab_for_cell(
     image: np.ndarray,
     pixel_indices: Tuple[np.ndarray, np.ndarray]
@@ -71,5 +67,5 @@ def predict_hab_for_cell(
     Predicts HAB bloom probability for a single water cell.
     """
     features_dict = compute_features_for_cell(image, pixel_indices)
-    input_df = pd.DataFrame([features_dict], columns=features)
-    return float(_model.predict_proba(input_df)[0][1])
+    input_df = pd.DataFrame([features_dict], columns=features) 
+    return float(_MODEL.predict_proba(input_df)[0][1]) # TODO: CUDA this 
